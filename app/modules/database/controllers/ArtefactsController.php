@@ -140,6 +140,21 @@ class Database_ArtefactsController extends Pas_Controller_Action_Admin
      */
     protected $_findForm;
 
+    /** The user
+     * @access protected
+     * @var
+     */
+    protected $_user;
+
+    /** Get the user details
+     * @access public
+     * @return \User
+     */
+    public function getUser()
+    {
+        return (new Pas_User_Details())->getPerson();
+    }
+
     /** Get the find form
      * @access public
      * @return \FindForm
@@ -278,9 +293,17 @@ class Database_ArtefactsController extends Pas_Controller_Action_Admin
     {
 
         if ($this->getParam('id', false)) {
+	$time_start = microtime(true);
+	echo "Start to retrieve the record values: " . $time_start . "<br>";
             $this->view->recordID = $this->getParam('id');
             $id = $this->getParam('id');
             $finds = $this->getFinds()->getAllData($id);
+	$time_end = microtime(true);
+	//var_dump($finds);
+	echo "Record is: " . $finds[0]['old_findID'] . "<br>";
+	echo "Retrieve the record values: " . $time_end . "<br>";
+	$time = $time_end - $time_start;
+	echo "Time to retrieve the record values: " . $time; //die();
             $this->_helper->availableOrNot($finds);
             $this->view->finds = $finds;
             $coins = new Coins();
@@ -294,6 +317,7 @@ class Database_ArtefactsController extends Pas_Controller_Action_Admin
             $this->view->comments = $this->getComments()->getFindComments($id);
             $models = new SketchFab();
             $this->view->sketchfab = $models->getModels($id);
+
         } else {
             throw new Pas_Exception_Param($this->_missingParameter, 500);
         }
@@ -394,6 +418,7 @@ class Database_ArtefactsController extends Pas_Controller_Action_Admin
 	    {
                 if ($form->isValid($this->_request->getPost()))
 		{
+//			echo "<pre>"; var_dump($form->getValues()); echo "</pre>"; die();
                     $updatedFindDetails = $form->getValues();
 
                     // recordername, finder, idBy, id2by and secondfinder not given value, then respective fields will also updated accordingly
@@ -533,8 +558,7 @@ class Database_ArtefactsController extends Pas_Controller_Action_Admin
     public function notifyfloAction()
     {
         if ($this->getParam('id', false)) {
-
-	    $this->_user = (new Pas_User_Details())->getPerson();
+	    $this->_user = $this->getUser();
 
             // Sends email from info@ on behalf of user that clicked Notify FLO. FLO receives
             // email, FA and end-user are CCd.
@@ -626,23 +650,29 @@ class Database_ArtefactsController extends Pas_Controller_Action_Admin
      */
     protected function notify($objecttype, $broadperiod, $institution, $createdBy, $data)
     {
-        if ($institution === 'PUBLIC') {
+        $this->createdByNull = true;
+        if ($institution === 'PUBLIC')
+	{
             $users = new Users();
             $responsible = $users->fetchRow('id = ' . $createdBy);
-            $to = array(array(
-                'email' => $responsible->email,
-                'name' => $responsible->fullname
-            ));
-        } elseif (in_array($institution, array('PAS', 'DCMS', 'RAH', 'BM'))) {
-            $to = array(array('email' => 'info@finds.org.uk', 'name' => 'Central Unit'));
+	    if (!empty($responsible))
+	    {
+                $to = array(array('email' => $responsible->email, 'name' => $responsible->fullname));
+		$this->createdByNull = false;
+	    }
         } else {
             $responsible = new Contacts();
             $to = $responsible->getOwner($data['comment_findID']);
-            if(empty($to)){
-                $to = array(array('email' => 'info@finds.org.uk', 'name' => 'Central Unit'));
-            }
         }
+
+        if (empty($to) || in_array($institution, array('PAS', 'DCMS', 'RAH', 'BM')))
+	{
+            $to = array(array('email' => 'info@finds.org.uk', 'name' => 'Central Unit'));
+        }
+
         $cc = $this->_getAdviser($objecttype, $broadperiod);
+        $this->_user = $this->getUser();
+
         if ($this->_user) {
             $from = array(array(
                 'email' => $this->_user->email,
